@@ -1,0 +1,25 @@
+# ---- build stage ----
+FROM node:18-alpine AS build
+WORKDIR /app
+
+# Install deps (works whether you have a lockfile or not)
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then \
+      npm ci --no-audit --no-fund; \
+    else \
+      npm install --no-audit --no-fund; \
+    fi
+
+# copy only Angular sources (avoid sending Java sources to the Node build)
+COPY angular.json ./
+COPY tsconfig*.json ./
+COPY src ./src
+
+# build; force a stable output path
+RUN npm run build -- --configuration=production --output-path=dist/app
+
+# ---- runtime (Nginx) ----
+FROM nginx:1.25-alpine
+COPY ./frontend.nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist/app/ /usr/share/nginx/html/
